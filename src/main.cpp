@@ -28,6 +28,75 @@ std::string hasData(std::string s) {
   return "";
 }
 
+class Twiddle
+{
+public:
+  Twiddle(PID & pid) : pid_(pid)
+  {}
+
+  void Run()
+  {
+    pid_.Twiddle(Kp_, Ki_, Kd_);
+  }
+
+  void Update(double error)
+  {
+    assert(!isinf(error));
+
+    if (!BestErrorInit_)
+    {
+      BestError_ = error;
+      BestErrorInit_ = true;
+      return;
+    }
+
+    if (PIndex_ % 2 == 0)
+    {
+      if (error < BestError_)
+      {
+        BestError_ = error;
+        *pdps_[PIndex_] *= 1.1;
+        // Start twiddling next param
+        PIndex_ = (PIndex_ + 2) % 6;
+      }
+      else
+      {
+        *pps_[PIndex_] -= 2 * (*pdps_[PIndex_]);
+        // Try the second stage twiddling
+        PIndex_ = (PIndex_ + 1) % 6;
+      }
+    }
+    else if (PIndex_ % 2 == 1)
+    {
+      if (error >= BestError_)
+      {
+        *pps_[PIndex_] += *pdps_[PIndex_];
+        *pdps_[PIndex_] *= 0.9;
+      }
+      PIndex_ = (PIndex_ + 1) % 6;
+    }
+  }
+
+private:
+  double Kp_ = 0.0;
+  double Ki_ = 0.0;
+  double Kd_ = 0.0;
+
+  double Dp_ = 1.0;
+  double Di_ = 1.0;
+  double Dd_ = 1.0;
+
+  std::array<double *, 6> pps_  = {{ &Kp_, &Kp_, &Ki_, &Ki_, &Kd_, &Kd_ }};
+  std::array<double *, 6> pdps_ = {{ &Dp_, &Dp_, &Di_, &Di_, &Dd_, &Dd_ }};
+
+  size_t PIndex_ = 0;
+
+  double BestError_;
+  bool   BestErrorInit_ = false;
+
+  PID & pid_;
+};
+
 int main()
 {
   uWS::Hub h;

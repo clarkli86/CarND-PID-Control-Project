@@ -33,6 +33,11 @@ public:
   void Init(double Kp, double Ki, double Kd);
 
   /*
+   * Update hyperparams for twiddling
+   */
+  void Twiddle(double Kp, double Ki, double Kd);
+
+  /*
   * Update the PID error variables given cross track error.
   */
   void UpdateError(double cte);
