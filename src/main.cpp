@@ -151,9 +151,14 @@ int main()
 
   PID pid;
   // TODO: Initialize the pid variable.
-  // Found by my twiddle
-  // pid.Init(0.109, 0.0, 2.1);
+  // Found by twiddle
   pid.Init(0.109, 0.0, 0.901);
+  // Large P
+  //pid.Init(2.0, 0.0, 0.901);
+  // Large I
+  //pid.Init(0.109, 1.0, 0.901);
+  // Small D
+  //pid.Init(0.109, 0.0, 0.1);
 
   Twiddle twiddle { pid };
 
