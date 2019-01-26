@@ -7,6 +7,16 @@
 // for convenience
 using json = nlohmann::json;
 
+namespace {
+// Number of frames to evalutate
+static constexpr size_t N = 200;
+// Min sum of dps
+static constexpr double TOL = 0.2;
+
+// Run twiddle?
+static constexpr bool TWIDDLE = false;
+}
+
 // For converting back and forth between radians and degrees.
 constexpr double pi() { return M_PI; }
 double deg2rad(double x) { return x * pi() / 180; }
@@ -50,11 +60,13 @@ public:
       return;
     }
 
+    // Stage 1: Apply dps
     if (PIndex_ % 3 == 0)
     {
       *pps_[PIndex_] += *pdps_[PIndex_];
       PIndex_ = (PIndex_ + 1) % 9;
     }
+    // Stage 2: Try negating dps
     else if (PIndex_ % 3 == 1)
     {
       if (error < BestError_)
@@ -72,6 +84,7 @@ public:
         PIndex_ = (PIndex_ + 1) % 9;
       }
     }
+    // Stage 2: Shrink dps
     else if (PIndex_ % 3 == 2)
     {
       if (error < BestError_)
@@ -138,9 +151,9 @@ int main()
 
   PID pid;
   // TODO: Initialize the pid variable.
-  //pid.Init(0.06, 0.00031, 1.29);
   // Found by my twiddle
-  pid.Init(0.109, 0.0, 2.1);
+  // pid.Init(0.109, 0.0, 2.1);
+  pid.Init(0.109, 0.0, 0.901);
 
   Twiddle twiddle { pid };
 
@@ -167,11 +180,13 @@ int main()
           * another PID controller to control the speed!
           */
 
-          if (false)
+          if (TWIDDLE)
           {
-            static size_t num_samples = 0;
+            // Number of frames that have been evaluated
+            static size_t num_frames = 0;
+            // Error in the second N frames
             static double err = 0;
-            if (twiddle.Sum() < 0.02)
+            if (twiddle.Sum() < TOL)
             {
               std::cout << "Twiddle has finished" << std::endl;
             }
@@ -180,23 +195,23 @@ int main()
               twiddle.Run();
 
               // Give twiddle some time to work on it
-              if (num_samples > 100)
+              if (num_frames > N)
               {
                 err += cte * cte;
               }
 
-              ++num_samples;
-              if (num_samples > 200)
+              ++num_frames;
+              if (num_frames > N * 2)
               {
-                twiddle.Update(err / 100);
-                num_samples = 0;
+                twiddle.Update(err / N);
+                num_frames = 0;
                 err = 0;
                 // To restart the traiing process
                 std::string reset_msg = "42[\"reset\",{}]";
                 ws.send(reset_msg.data(), reset_msg.length(), uWS::OpCode::TEXT);
               }
             }
-            std::cout << num_samples << std::endl;
+            std::cout << num_frames << std::endl;
             twiddle.Debug();
           }
 
