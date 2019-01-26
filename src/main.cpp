@@ -3,6 +3,7 @@
 #include "json.hpp"
 #include "PID.h"
 #include <math.h>
+#include <cmath>
 
 // for convenience
 using json = nlohmann::json;
@@ -51,7 +52,7 @@ public:
 
   void Update(double error)
   {
-    assert(!isinf(error));
+    assert(!std::isinf(error));
 
     if (!BestErrorInit_)
     {
