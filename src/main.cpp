@@ -50,30 +50,64 @@ public:
       return;
     }
 
-    if (PIndex_ % 2 == 0)
+    if (PIndex_ % 3 == 0)
+    {
+      *pps_[PIndex_] += *pdps_[PIndex_];
+      PIndex_ = (PIndex_ + 1) % 9;
+    }
+    else if (PIndex_ % 3 == 1)
     {
       if (error < BestError_)
       {
         BestError_ = error;
+        BestPID_ = {{Kp_, Ki_, Kd_}};
         *pdps_[PIndex_] *= 1.1;
         // Start twiddling next param
-        PIndex_ = (PIndex_ + 2) % 6;
+        PIndex_ = (PIndex_ + 2) % 9;
       }
       else
       {
         *pps_[PIndex_] -= 2 * (*pdps_[PIndex_]);
         // Try the second stage twiddling
-        PIndex_ = (PIndex_ + 1) % 6;
+        PIndex_ = (PIndex_ + 1) % 9;
       }
     }
-    else if (PIndex_ % 2 == 1)
+    else if (PIndex_ % 3 == 2)
     {
-      if (error >= BestError_)
+      if (error < BestError_)
+      {
+        BestError_ = error;
+        BestPID_ = {{Kp_, Ki_, Kd_}};
+      }
+      else
       {
         *pps_[PIndex_] += *pdps_[PIndex_];
         *pdps_[PIndex_] *= 0.9;
       }
-      PIndex_ = (PIndex_ + 1) % 6;
+      PIndex_ = (PIndex_ + 1) % 9;
+    }
+  }
+
+  double Sum() const
+  {
+    return Dp_ + Di_ + Dd_;
+  }
+
+  void Debug() const
+  {
+    std::cout << "(" << Kp_ << ", " << Ki_ << ", " << Kd_ << ") (" << Dp_ << ", " << Di_ << ", " << Dd_ << ")" << std::endl;
+    std::cout << "Best Error: " << BestError_
+              << " Best PID: " "(" << BestPID_[0] << ", " << BestPID_[1] << ", " << BestPID_[2] << ")" << std::endl;
+    switch (PIndex_ / 3)
+    {
+      case 0:
+        std::cout << "Adjusting p" << std::endl;
+        break;
+      case 1:
+        std::cout << "Adjusting i" << std::endl;
+        break;
+      case 2:
+        std::cout << "Adjusting d" << std::endl;
     }
   }
 
@@ -86,12 +120,13 @@ private:
   double Di_ = 1.0;
   double Dd_ = 1.0;
 
-  std::array<double *, 6> pps_  = {{ &Kp_, &Kp_, &Ki_, &Ki_, &Kd_, &Kd_ }};
-  std::array<double *, 6> pdps_ = {{ &Dp_, &Dp_, &Di_, &Di_, &Dd_, &Dd_ }};
+  std::array<double *, 9> pps_  = {{ &Kp_, &Kp_, &Kp_, &Ki_, &Ki_, &Ki_, &Kd_, &Kd_, &Kd_ }};
+  std::array<double *, 9> pdps_ = {{ &Dp_, &Dp_, &Dp_, &Di_, &Di_, &Di_, &Dd_, &Dd_, &Dd_ }};
 
   size_t PIndex_ = 0;
 
   double BestError_;
+  std::array<double, 3> BestPID_;
   bool   BestErrorInit_ = false;
 
   PID & pid_;
@@ -103,9 +138,13 @@ int main()
 
   PID pid;
   // TODO: Initialize the pid variable.
-  pid.Init(0.06, 0.00031, 1.29);
+  //pid.Init(0.06, 0.00031, 1.29);
+  // Found by my twiddle
+  pid.Init(0.109, 0.0, 2.1);
 
-  h.onMessage([&pid](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length, uWS::OpCode opCode) {
+  Twiddle twiddle { pid };
+
+  h.onMessage([&pid, &twiddle](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length, uWS::OpCode opCode) {
     // "42" at the start of the message means there's a websocket message event.
     // The 4 signifies a websocket message
     // The 2 signifies a websocket event
@@ -127,10 +166,47 @@ int main()
           * NOTE: Feel free to play around with the throttle and speed. Maybe use
           * another PID controller to control the speed!
           */
-          pid.UpdateError(cte);
-          steer_value = pid.TotalError();
-          steer_value = std::max(-1.0, steer_value);
-          steer_value = std::min(1.0, steer_value);
+
+          if (false)
+          {
+            static size_t num_samples = 0;
+            static double err = 0;
+            if (twiddle.Sum() < 0.02)
+            {
+              std::cout << "Twiddle has finished" << std::endl;
+            }
+            else
+            {
+              twiddle.Run();
+
+              // Give twiddle some time to work on it
+              if (num_samples > 100)
+              {
+                err += cte * cte;
+              }
+
+              ++num_samples;
+              if (num_samples > 200)
+              {
+                twiddle.Update(err / 100);
+                num_samples = 0;
+                err = 0;
+                // To restart the traiing process
+                std::string reset_msg = "42[\"reset\",{}]";
+                ws.send(reset_msg.data(), reset_msg.length(), uWS::OpCode::TEXT);
+              }
+            }
+            std::cout << num_samples << std::endl;
+            twiddle.Debug();
+          }
+
+          // Execute PID controller
+          {
+            pid.UpdateError(cte);
+            steer_value = -pid.TotalError();
+            //steer_value = std::max(-1.0, steer_value);
+            //steer_value = std::min(1.0, steer_value);
+          }
 
           // DEBUG
           std::cout << "CTE: " << cte << " Steering Value: " << steer_value << std::endl;
